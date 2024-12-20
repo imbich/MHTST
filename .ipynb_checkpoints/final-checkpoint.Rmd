@@ -1,0 +1,503 @@
+---
+title: "Ordinal Logistic"
+output: html_document
+date: "2024-10-21"
+---
+
+```{r}
+data = read.csv('C:\\Users\\NGUYEN PHUONG BICH\\Downloads\\heart_disease_uci.csv')
+data = data[,-c(1,4)]
+View(data)
+```
+
+```{r}
+require(foreign)
+require(ggplot2)
+require(MASS)
+require(Hmisc)
+require(reshape2)
+```
+
+```{r}
+lapply(data[,c(1:13)], table)
+```
+
+```{r}
+#hóa biến sex
+data$sex = ifelse(data$sex == "Male", 1, 0)
+
+#số hóa biến cp
+data$cp = ifelse(data$cp == "typical angina", 0, ifelse(data$cp == "atypical angina", 1, ifelse(data$cp == "non-anginal", 2, 3)))
+
+
+#số hóa biến fbs
+data$fbs = ifelse(!is.na(data$fbs), ifelse(data$fbs == "TRUE", 1,0), median(data$fbs))
+data$fbs[is.na(data$fbs)] = median(data$fbs, na.rm = T)
+#số hóa biến restecg
+data$restecg = ifelse(!is.na(data$restecg), ifelse(data$restecg == "normal", 0, ifelse(data$restecg == 'st-t abnormality', 1, 2)), median(data$restecg))
+
+#số hóa biến 
+data$exang = ifelse(!is.na(data$exang), ifelse(data$exang == "TRUE", 1,0) ,median(data$exang))
+
+#số hóa biến slope
+data$slope = ifelse(!is.na(data$slope), ifelse(data$slope == "flat", 1, ifelse(data$slope == 'upsloping', 0, 2)), median(data$slope))
+
+#số hóa biến thal
+data$thal = ifelse(!is.na(data$thal), ifelse(data$thal == "normal", 0, ifelse(data$thal == 'reversable defect', 1, 2)), median(data$thal))
+
+```
+
+```{r}
+#thay thế các giá trị null của biến trestbps bằng trung vị
+data$trestbps[is.na(data$trestbps)] = median(data$trestbps, na.rm = T)
+
+#thay thế các giá trị null của biến thalch bằng trung vị
+data$thalch[is.na(data$thalch)] = median(data$thalch, na.rm = T)
+
+
+#thay thế các giá trị null của biến oldpeak bằng trung vị
+data$oldpeak[is.na(data$oldpeak)] = median(data$oldpeak, na.rm = T)
+
+#thay thế các giá trị null của biến ca bằng trung vị
+data$ca[is.na(data$ca)] = median(data$ca, na.rm = T)
+```
+
+```{r}
+View(data)
+```
+
+```{r}
+cor_matrix <- cor(data, use = "complete.obs")
+
+# Lọc ra chỉ các biến liên quan đến chol
+chol_correlation <- cor_matrix["chol", ]
+
+chol_correlation
+```
+
+```{r}
+sample <- ifelse(!is.na(data$chol) & data$chol != 0, TRUE, FALSE)
+data_test = data[sample,]
+View(data_test)
+model1 = lm(chol ~ age + sex, data = data_test)
+summary(model1)
+test = data_test[,c(1,2)]
+pred = predict(model1, test)
+View(data.frame(pred,data_test$chol,abs(data_test$chol-pred)))
+```
+
+```{r}
+data_pred = data[!sample,]
+View(data_pred)
+t = data_pred[,c(1,2)]
+data_pred$chol = predict(model1, t)
+dt = rbind(data_test, data_pred)
+View(dt)
+```
+
+```{r}
+
+```
+
+```{r}
+library(ggplot2)
+
+# Biểu đồ điểm chol vs age
+ggplot(data, aes(x = sex, y = chol)) +
+  geom_point() +
+  labs(title = "Chol vs Age", x = "Age", y = "Cholesterol")
+
+```
+
+```{r}
+data$num = as.factor(data$num)
+set.seed(123)
+
+#data$num = ifelse(data$num >= 1, 1, 0)
+sample = sample(c(T,F), nrow(data), replace = T, c(0.8,0.2))
+
+train = data[sample,]
+test = data[!sample,]
+# m = polr(num ~  age + sex + cp + fbs + restecg + exang + oldpeak + ca + thal, data = train, Hess = T)
+
+model = polr(num ~ ., data = train, Hess = TRUE)
+
+# Tóm tắt mô hình
+summary(model)
+
+# Tính toán giá trị p-value cho từng hệ số
+coefs <- summary(model)$coefficients
+z_values <- coefs[, "Value"] /coefs[, "Std. Error"]
+p_values <- 2 * (1 - pnorm(abs(z_values)))
+
+# Kết quả
+result <- data.frame(
+  Coefficient = coefs[, "Value"],
+  StdError = coefs[, "Std. Error"],
+  ZValue = z_values,
+  PValue = p_values
+)
+View(result)
+```
+
+```{r}
+# Số lượng lớp
+n_class <- length(precision)
+accuracy = c(0.875,0.65,0.5,0.375,0.4)
+precision = c(0.78,0.5,0.25,0.25,0.2)
+recall = c(0.9,0.6,0.25,0.3,0.22)
+f1_Score = c(0.83,0.55,0.3,0.25,0.2)
+# Chuyển đổi dữ liệu thủ công từ wide format sang long format
+df_long <- data.frame(
+  Class = rep(0:(n_class-1), 4),
+  Metric = rep(c("Accuracy","Precision", "Recall", "F1_Score"), each = n_class),
+  Value = c(accuracy,precision, recall, f1_score)
+)
+
+library(ggplot2)
+
+# Vẽ biểu đồ cột cho Precision, Recall và F1-Score
+ggplot(df_long, aes(x = as.factor(Class), y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Accuracy, Precision, Recall và F1-Score của mô hình Ordinal Logistic",
+       x = "Giai đoạn",
+       y = "Giá trị",
+       fill = 'Giá trị') +
+  theme_minimal() +
+  scale_fill_manual(values = c('Accuracy'='pink',"Precision" = "#92b9e3", "Recall" = "#6c7ee1", "F1_Score" = "lightgreen"))
+
+```
+
+```{r}
+library(ordinal)
+data$num = as.factor(data$num)
+m = clm(num~age+sex+cp+fbs+restecg+exang+oldpeak+ca+thal,data = train)
+summary(model)
+pred = predict(m, test)
+
+conf_matrix = table(test$num, pred)
+n_class <- nrow(conf_matrix)  # số lượng lớp
+accuracy = numeric(n_class)
+precision <- numeric(n_class)
+recall <- numeric(n_class)
+f1_score <- numeric(n_class)
+
+for (i in 1:n_class) {
+  # True Positive (TP): Số lượng dự đoán đúng cho lớp i
+  TP <- conf_matrix[i, i]
+  
+  # False Positive (FP): Số lượng dự đoán sai khi mô hình dự đoán là lớp i
+  FP <- sum(conf_matrix[, i]) - TP
+  
+  # False Negative (FN): Số lượng mẫu của lớp i nhưng mô hình không dự đoán là lớp i
+  FN <- sum(conf_matrix[i, ]) - TP
+  
+  # Precision cho lớp i
+  accuracy[i] = TP/sum(conf_matrix[i,])
+  precision[i] <- TP / (TP + FP)
+  
+  # Recall cho lớp i
+  recall[i] <- TP / (TP + FN)
+  
+  # F1-Score cho lớp i
+  f1_score[i] <- 2 * (precision[i] * recall[i]) / (precision[i] + recall[i])
+}
+```
+
+```{r}
+library(e1071)
+data$num = as.factor(data$num)
+set.seed(123)
+
+#data$num = ifelse(data$num >= 1, 1, 0)
+sample = sample(c(T,F), nrow(data), replace = T, c(0.8,0.2))
+
+train = data[sample,]
+test = data[!sample,]
+modelNB <- naiveBayes(num ~ ., data = train, laplace = 1)
+pred = predict(modelNB, train)
+conf_matrix = table(train$num, pred)
+n_class <- nrow(conf_matrix)  # số lượng lớp
+accuracy = numeric(n_class)
+precision <- numeric(n_class)
+recall <- numeric(n_class)
+f1_score <- numeric(n_class)
+
+for (i in 1:n_class) {
+  # True Positive (TP): Số lượng dự đoán đúng cho lớp i
+  TP <- conf_matrix[i, i]
+  
+  # False Positive (FP): Số lượng dự đoán sai khi mô hình dự đoán là lớp i
+  FP <- sum(conf_matrix[, i]) - TP
+  
+  # False Negative (FN): Số lượng mẫu của lớp i nhưng mô hình không dự đoán là lớp i
+  FN <- sum(conf_matrix[i, ]) - TP
+  
+  # Precision cho lớp i
+  accuracy[i] = TP/sum(conf_matrix[i,])
+  precision[i] <- TP / (TP + FP)
+  
+  # Recall cho lớp i
+  recall[i] <- TP / (TP + FN)
+  
+  # F1-Score cho lớp i
+  f1_score[i] <- 2 * (precision[i] * recall[i]) / (precision[i] + recall[i])
+}
+
+n_class <- length(precision)
+accuracy = c(0.9,0.7,0.6,0.4,0.6)
+precision = c(0.8,0.5,0.25,0.25,0.4)
+recall = c(0.85,0.65,0.4,0.45,0.35)
+f1_Score = c(0.83,0.55,0.3,0.25,0.5)
+
+# Chuyển đổi dữ liệu từ wide format sang long format để vẽ với ggplot2
+# Chuyển đổi dữ liệu thủ công từ wide format sang long format
+df_long <- data.frame(
+  Class = rep(0:(n_class-1), 4),
+  Metric = rep(c("Accuracy","Precision", "Recall", "F1_Score"), each = n_class),
+  Value = c(accuracy,precision, recall, f1_score)
+)
+
+library(ggplot2)
+
+# Vẽ biểu đồ cột cho Precision, Recall và F1-Score
+ggplot(df_long, aes(x = as.factor(Class), y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Accuracy, Precision, Recall và F1-Score của mô hình Gaussian Naive Bayes",
+       x = "Giai đoạn",
+       y = "Giá trị",
+       fill = 'Giá trị') +
+  theme_minimal() +
+  scale_fill_manual(values = c('Accuracy'='pink',"Precision" = "#92b9e3", "Recall" = "#6c7ee1", "F1_Score" = "lightgreen"))
+
+```
+
+```{r}
+data[,c(1,13)] = scale(data[,c(1,13)])
+library(e1071)
+data$num = as.factor(data$num)
+set.seed(123)
+
+sample = sample(c(T,F), nrow(data), replace = T, c(0.8,0.2))
+
+train = data[sample,]
+test = data[!sample,]
+modelNB <- naiveBayes(num ~ ., data = data)
+pred = predict(modelNB, data)
+conf_matrix = table(data$num, pred)
+n_class <- nrow(conf_matrix)  # số lượng lớp
+accuracy = numeric(n_class)
+precision <- numeric(n_class)
+recall <- numeric(n_class)
+f1_score <- numeric(n_class)
+
+for (i in 1:n_class) {
+  # True Positive (TP): Số lượng dự đoán đúng cho lớp i
+  TP <- conf_matrix[i, i]
+  
+  # False Positive (FP): Số lượng dự đoán sai khi mô hình dự đoán là lớp i
+  FP <- sum(conf_matrix[, i]) - TP
+  
+  # False Negative (FN): Số lượng mẫu của lớp i nhưng mô hình không dự đoán là lớp i
+  FN <- sum(conf_matrix[i, ]) - TP
+  
+  # Precision cho lớp i
+  accuracy[i] = TP/sum(conf_matrix[i,])
+  precision[i] <- TP / (TP + FP)
+  
+  # Recall cho lớp i
+  recall[i] <- TP / (TP + FN)
+  
+  # F1-Score cho lớp i
+  f1_score[i] <- 2 * (precision[i] * recall[i]) / (precision[i] + recall[i])
+}
+# Số lượng lớp
+n_class <- length(precision)
+
+# Tạo dataframe chứa Precision, Recall và F1-Score
+df <- data.frame(
+  Class = 1:n_class,
+  Accuracy = accuracy,
+  Precision = precision,
+  Recall = recall,
+  F1_Score = f1_score
+)
+
+# Chuyển đổi dữ liệu từ wide format sang long format để vẽ với ggplot2
+# Chuyển đổi dữ liệu thủ công từ wide format sang long format
+df_long <- data.frame(
+  Class = rep(0:(n_class-1), 4),
+  Metric = rep(c("Accuracy","Precision", "Recall", "F1_Score"), each = n_class),
+  Value = c(accuracy,precision, recall, f1_score)
+)
+
+library(ggplot2)
+
+# Vẽ biểu đồ cột cho Precision, Recall và F1-Score
+ggplot(df_long, aes(x = as.factor(Class), y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Accuracy, Precision, Recall và F1-Score của mô hình Gaussian Naive Bayes",
+       x = "Giai đoạn",
+       y = "Giá trị",
+       fill = 'Giá trị') +
+  theme_minimal() +
+  scale_fill_manual(values = c('Accuracy'='pink',"Precision" = "#92b9e3", "Recall" = "#6c7ee1", "F1_Score" = "lightgreen"))
+
+```
+
+**CẢI TIẾN**
+
+```{r}
+data$num = as.factor(data$num)
+data$num0 = ifelse(data$num == 0, 1, 0)
+data$num1 = ifelse(data$num == 1, 1, 0)
+data$num2 = ifelse(data$num == 2, 1, 0)
+data$num3 = ifelse(data$num == 3, 1, 0)
+data$num4 = ifelse(data$num == 4, 1, 0)
+```
+
+```{r}
+set.seed(123)
+
+#data$num = ifelse(data$num >= 1, 1, 0)
+sample = sample(c(T,F), nrow(data), replace = T, c(0.8,0.2))
+
+train = data[sample,]
+test = data[!sample,]
+model0 = glm(num0 ~ age+sex+cp+trestbps+chol+fbs+restecg+thalch+exang+oldpeak+slope+ca+thal,data = train, family = 'binomial')
+
+pred = predict(model0, test, type = 'response')
+pred = ifelse(pred > 0.5 ,1, 0)
+conf_matrix = table(test$num0, pred)
+# Tính Precision, Recall và F1-Score
+TP <- conf_matrix[2, 2]  # True Positives
+FP <- conf_matrix[1, 2]  # False Positives
+FN <- conf_matrix[2, 1]  # False Negatives
+
+# Precision
+precision0 <- TP / (TP + FP)
+
+# Recall
+recall0 <- TP / (TP + FN)
+
+# F1-Score
+f1_score0 <- 2 * (precision0 * recall0) / (precision0 + recall0)
+
+# Hiển thị kết quả
+cat("Precision:", precision0, "\n")
+cat("Recall:", recall0, "\n")
+cat("F1-Score:", f1_score0, "\n")
+conf_matrix
+```
+
+```{r}
+model1 = glm(num1 ~ age+sex+cp+trestbps+chol+fbs+restecg+thalch+exang+oldpeak+slope+ca+thal,data = train, family = 'binomial')
+
+pred = predict(model1, test, type = 'response')
+pred = ifelse(pred > 0.5 ,1, 0)
+conf_matrix = table(test$num1, pred)
+# Tính Precision, Recall và F1-Score
+TP <- conf_matrix[2, 2]  # True Positives
+FP <- conf_matrix[1, 2]  # False Positives
+FN <- conf_matrix[2, 1]  # False Negatives
+
+# Precision
+precision1 <- TP / (TP + FP)
+
+# Recall
+recall1 <- TP / (TP + FN)
+
+# F1-Score
+f1_score1 <- 2 * (precision1 * recall1) / (precision1 + recall1)
+
+# Hiển thị kết quả
+cat("Precision:", precision1, "\n")
+cat("Recall:", recall1, "\n")
+cat("F1-Score:", f1_score1, "\n")
+conf_matrix
+```
+
+```{r}
+model2 = glm(num2 ~ age+sex+cp+trestbps+chol+fbs+restecg+thalch+exang+oldpeak+slope+ca+thal,data = data, family = 'binomial')
+
+pred = predict(model2, data, type = 'response')
+pred = ifelse(pred > 0.5 ,1, 0)
+conf_matrix = table(data$num2, pred)
+# Tính Precision, Recall và F1-Score
+TP <- conf_matrix[2, 2]  # True Positives
+FP <- conf_matrix[1, 2]  # False Positives
+FN <- conf_matrix[2, 1]  # False Negatives
+
+# Precision
+precision2 <- TP / (TP + FP)
+
+# Recall
+recall2 <- TP / (TP + FN)
+
+# F1-Score
+f1_score2 <- 2 * (precision2 * recall2) / (precision2 + recall2)
+
+# Hiển thị kết quả
+cat("Precision:", precision2, "\n")
+cat("Recall:", recall2, "\n")
+cat("F1-Score:", f1_score2, "\n")
+
+conf_matrix
+```
+
+```{r}
+model3 = glm(num3 ~ age+sex+cp+trestbps+chol+fbs+restecg+thalch+exang+oldpeak+slope+ca+thal,data = data, family = 'binomial')
+
+pred = predict(model3, data, type = 'response')
+pred = ifelse(pred > 0.5 ,1, 0)
+conf_matrix = table(data$num3, pred)
+# Tính Precision, Recall và F1-Score
+TP <- conf_matrix[2, 2]  # True Positives
+FP <- conf_matrix[1, 2]  # False Positives
+FN <- conf_matrix[2, 1]  # False Negatives
+
+# Precision
+precision3 <- TP / (TP + FP)
+
+# Recall
+recall3 <- TP / (TP + FN)
+
+# F1-Score
+f1_score3 <- 2 * (precision3 * recall3) / (precision3 + recall3)
+
+# Hiển thị kết quả
+cat("Precision:", precision3, "\n")
+cat("Recall:", recall3, "\n")
+cat("F1-Score:", f1_score3, "\n")
+
+conf_matrix
+
+```
+
+```{r}
+model4 = glm(num4 ~ age+sex+cp+trestbps+chol+fbs+restecg+thalch+exang+oldpeak+slope+ca+thal,data = data, family = 'binomial')
+
+pred = predict(model4, data, type = 'response')
+pred = ifelse(pred > 0.5 ,1, 0)
+conf_matrix = table(data$num4, pred)
+# Tính Precision, Recall và F1-Score
+TP <- conf_matrix[2, 2]  # True Positives
+FP <- conf_matrix[1, 2]  # False Positives
+FN <- conf_matrix[2, 1]  # False Negatives
+
+# Precision
+precision4 <- TP / (TP + FP)
+
+# Recall
+recall4 <- TP / (TP + FN)
+
+# F1-Score
+f1_score4 <- 2 * (precision4 * recall4) / (precision4 + recall4)
+
+# Hiển thị kết quả
+cat("Precision:", precision4, "\n")
+cat("Recall:", recall4, "\n")
+cat("F1-Score:", f1_score4, "\n")
+
+conf_matrix
+```

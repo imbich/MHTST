@@ -1,0 +1,445 @@
+---
+title: "Ordinal Logistic"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+date: "2024-10-21"
+---
+
+1.  **Đọc dữ liệu**
+
+```{r}
+data = read.csv("C:\\Users\\NGUYEN PHUONG BICH\\Downloads\\heart_disease_uci.csv")
+data = data[,-c(1,4)] #Xóa bỏ cột không cần thiết
+View(data)
+s = c(ifelse(data$chol == 0 & !is.na(data$chol), T, F))
+sum(s)
+```
+
+```{r}
+library(ggplot2)
+
+# Vẽ histogram cho biến num
+ggplot(data, aes(x = num)) +
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black", alpha = 0.7) +
+  labs(title = "Biểu đồ thể hiện số bệnh nhân trong các giai đoạn", 
+       x = "Giai đoạn", y = "Số bệnh nhân") +
+  theme_minimal() +
+  theme(text = element_text(size = 9))
+
+```
+
+```{r}
+dt = data
+ggplot(dt, aes(x = factor(num), fill = sex)) +
+  geom_bar(position = "dodge", color = "black") +
+  labs(title = "Số bệnh nhân theo tình trạng bệnh và giới tính",
+       x = "Tình trạng bệnh", y = "Số bệnh nhân", fill = "Giới tính") +
+  scale_fill_manual(values = c("Male" = "lightblue", "Female" = "lightpink")) +
+  scale_x_discrete(labels = c("0" = "Không mắc bệnh", "1" = "Mắc bệnh")) +  # Đổi tên mức độ bệnh
+  theme_minimal() +
+  theme(text = element_text(size = 9))
+```
+
+```{r}
+dt = data[data$num > 0,]
+ggplot(dt, aes(x = age)) +
+  geom_histogram(binwidth = 5, fill = "lightblue", color = "black", alpha = 0.7) +
+  labs(title = "Tần suất bệnh nhân theo độ tuổi", x = "Tuổi", y = "Số bệnh nhân") +
+  theme_minimal() +
+  theme(text = element_text(size = 10),
+        plot.title = element_text(hjust = 0.5))  # Căn giữa tiêu đề
+
+
+```
+
+```{r}
+ggplot(dt, aes(x = chol)) +
+  geom_histogram(binwidth = 10, fill = "lightblue", color = "black", alpha = 0.7) +
+  labs(title = "Biểu đồ tần suất của chol (cholesterol)", 
+       x = "Giá trị", 
+       y = "Số bệnh nhân") +
+  theme_minimal() +
+  theme(text = element_text(size = 10),
+        plot.title = element_text(hjust = 0.5))
+
+```
+
+2.  **Tiền xử lý dữ liệu:**
+
+    Đưa dữ liệu về dạng chuẩn + Mã hóa biến chữ thành số và thay giá trị null = trung vị
+
+```{r}
+#Chuẩn hóa các biến số
+num_vars = sapply(data,is.numeric) & names(data) != "num"
+data[num_vars] = scale(data[num_vars]) 
+
+#hóa biến sex
+data$sex = ifelse(data$sex == "Male", 1, 0)
+
+#số hóa biến cp
+data$cp = ifelse(data$cp == "typical angina", 0, ifelse(data$cp == "atypical angina", 1, ifelse(data$cp == "non-anginal", 2, 3)))
+
+#thay thế các giá trị null của biến trestbps bằng trung vị
+data$trestbps[is.na(data$trestbps)] = median(data$trestbps, na.rm = T)
+
+
+#số hóa và thay giá trị null bằng trung vị của biến fbs
+data$fbs = ifelse(data$fbs == "TRUE", 1,0)
+data$fbs[is.na(data$fbs)] = median(data$fbs, na.rm = T)
+
+#số hóa biến restecg
+data$restecg = ifelse(data$restecg == "normal", 0, ifelse(data$restecg == 'st-t abnormality', 1, 2))
+data$restecg[is.na(data$restecg)] = median(data$restecg, na.rm = T)
+
+#thay thế các giá trị null của biến thalch bằng trung vị
+data$thalch[is.na(data$thalch)] = median(data$thalch, na.rm = T)
+
+
+#số hóa biến exang
+data$exang = ifelse(data$exang == "TRUE", 1,0)
+data$exang[is.na(data$exang)] = median(data$exang, na.rm = T)
+
+#thay thế các giá trị null của biến oldpeak bằng trung vị
+data$oldpeak[is.na(data$oldpeak)] = median(data$oldpeak, na.rm = T)
+
+#số hóa biến slope
+data$slope = ifelse(data$slope == "flat", 1, ifelse(data$slope == 'upsloping', 0, 2))
+data$slope[is.na(data$slope)] = median(data$slope, na.rm = T)
+
+#thay thế các giá trị null của biến ca bằng trung vị
+data$ca[is.na(data$ca)] = median(data$ca, na.rm = T)
+
+#số hóa biến thal
+data$thal = ifelse(data$thal == "normal", 0, ifelse(data$thal == 'reversable defect', 1, 2))
+data$thal[is.na(data$thal)] = median(data$thal, na.rm = T)
+View(data)
+
+```
+
+```{r}
+
+```
+
+3.  **Xây dựng mô hình**
+
+    **3.1. Trước khi sinh Chol**
+
+    Chia dữ liệu thành tập train (20%) và tập test (80%)
+
+```{r}
+dt = data
+dt$num = as.factor(dt$num)
+set.seed(123)
+#data$num = ifelse(data$num >= 1, 1, 0)
+sample = sample(c(T,F), nrow(dt), replace = T, c(0.8,0.2))
+train = dt[sample,]
+test = dt[!sample,]
+```
+
+-   Mô hình Ordinal Logistic
+
+```{r}
+library(MASS)
+m = polr(num~.,data = train, Hess = T)
+#m = polr(num ~ age + sex+ cp + chol + fbs + thalch + exang + oldpeak+ ca, data = train, Hess = T)
+summary(m)
+```
+
+Tính toán các chỉ số đánh giá
+
+```{r}
+library(ggplot2)
+predicted = predict(m, test)
+
+# Ma trận nhầm lẫn
+conf_matrix <- table(Predicted = predicted, Actual = test$num)
+# Hàm tính Precision, Recall, F1-Score
+calculate_metrics <- function(conf_matrix) {
+  classes <- colnames(conf_matrix) # Các lớp
+  metrics <- data.frame(Class = classes, Precision = NA, Recall = NA, F1 = NA)
+  
+  for (class in classes) {
+    TP <- conf_matrix[class, class] # True Positive
+    FP <- sum(conf_matrix[class, ]) - TP # False Positive
+    FN <- sum(conf_matrix[, class]) - TP # False Negative
+    
+    precision <- TP / (TP + FP)
+    recall <- TP / (TP + FN)
+    f1 <- 2 * (precision * recall) / (precision + recall)
+    
+    metrics[metrics$Class == class, "Precision"] <- precision
+    metrics[metrics$Class == class, "Recall"] <- recall
+    metrics[metrics$Class == class, "F1"] <- f1
+  }
+  
+  return(metrics)
+}
+
+# Tính toán các chỉ số
+metrics <- calculate_metrics(conf_matrix)
+# Tính độ chính xác cho từng nhãn
+class_accuracy <- diag(conf_matrix) / rowSums(conf_matrix)
+
+# Chuyển dữ liệu thành dạng dài (long format)
+metrics_long <- reshape2::melt(metrics, id.vars = "Class", variable.name = "Metric", value.name = "Value")
+
+# Thêm độ chính xác vào bảng dữ liệu
+accuracy_df <- data.frame(Class = names(class_accuracy), Metric = "Accuracy", Value = class_accuracy)
+metrics_long <- rbind(metrics_long, accuracy_df)
+
+# Vẽ biểu đồ với độ chính xác
+ggplot(metrics_long, aes(x = Class, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  scale_fill_manual(values = c("Precision" = "lightblue", "Recall" = "lightgreen", "F1" = "lightpink", "Accuracy" = "lightyellow")) +
+  labs(title = "Precision, Recall, F1-Score và Accuracy từng giai đoạn của mô hình Ordinal Logistic", 
+       x = "Giai đoạn", y = "Giá trị", fill = "Chỉ số") +
+  scale_y_continuous(limits = c(0, 1)) +  # Đặt giới hạn trục y từ 0 đến 1
+  theme_minimal() +
+  theme(text = element_text(size = 7))
+```
+
+```{r}
+
+```
+
+-   Mô hình Gaussian
+
+```{r}
+library(e1071)
+dt = data
+dt$sex <- as.factor(dt$sex)
+dt$cp <- as.factor(dt$cp)
+dt$fbs <- as.factor(dt$fbs)
+dt$restecg <- as.factor(dt$restecg)
+dt$exang <- as.factor(dt$exang)
+dt$slope <- as.factor(dt$slope)
+dt$thal <- as.factor(dt$thal)
+dt$num <- as.factor(dt$num)
+
+set.seed(123)
+sample = sample(c(T,F), nrow(dt), replace = T, c(0.8,0.2))
+train = dt[sample,]
+test = dt[!sample,]
+
+model <- naiveBayes(num ~ ., data = train)
+
+```
+
+Tính toán các chỉ số đánh giá
+
+```{r}
+# Dự đoán trên tập kiểm tra
+predicted <- predict(model, test)
+
+# Ma trận nhầm lẫn
+conf_matrix <- table(Predicted = predicted, Actual = test$num)
+# Hàm tính Precision, Recall, F1-Score
+calculate_metrics <- function(conf_matrix) {
+  classes <- colnames(conf_matrix) # Các lớp
+  metrics <- data.frame(Class = classes, Precision = NA, Recall = NA, F1 = NA)
+  
+  for (class in classes) {
+    TP <- conf_matrix[class, class] # True Positive
+    FP <- sum(conf_matrix[class, ]) - TP # False Positive
+    FN <- sum(conf_matrix[, class]) - TP # False Negative
+    
+    precision <- TP / (TP + FP)
+    recall <- TP / (TP + FN)
+    f1 <- 2 * (precision * recall) / (precision + recall)
+    
+    metrics[metrics$Class == class, "Precision"] <- precision
+    metrics[metrics$Class == class, "Recall"] <- recall
+    metrics[metrics$Class == class, "F1"] <- f1
+  }
+  
+  return(metrics)
+}
+
+# Tính toán các chỉ số
+metrics <- calculate_metrics(conf_matrix)
+# Tính độ chính xác cho từng nhãn
+class_accuracy <- diag(conf_matrix) / rowSums(conf_matrix)
+
+# Chuyển dữ liệu thành dạng dài (long format)
+metrics_long <- reshape2::melt(metrics, id.vars = "Class", variable.name = "Metric", value.name = "Value")
+
+# Thêm độ chính xác vào bảng dữ liệu
+accuracy_df <- data.frame(Class = names(class_accuracy), Metric = "Accuracy", Value = class_accuracy)
+metrics_long <- rbind(metrics_long, accuracy_df)
+
+# Vẽ biểu đồ với độ chính xác
+ggplot(metrics_long, aes(x = Class, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  scale_fill_manual(values = c("Precision" = "lightblue", "Recall" = "lightgreen", "F1" = "lightpink", "Accuracy" = "lightyellow")) +
+  labs(title = "Precision, Recall, F1-Score và Accuracy từng giai đoạn của mô hình Gaussian Naive Bayes", 
+       x = "Giai đoạn", y = "Giá trị", fill = "Chỉ số") +
+  scale_y_continuous(limits = c(0, 1)) +  # Đặt giới hạn trục y từ 0 đến 1
+  theme_minimal() +
+  theme(text = element_text(size = 7))
+```
+
+**3.2. Sinh Chol**
+
+```{r}
+dt = data
+sample = c(ifelse(is.na(dt$chol)| dt$chol == 0, F, T))
+
+dt_zero = dt[!sample,] # Chứa các mẫu có chol = 0 hoặc chol = null
+
+dt_test = dt[sample,] # Chứa các mẫu còn lại
+```
+
+-   Xây dựng mô hình biểu diễn tuyến tính biến chol theo biến thalch + sex + trestbps
+
+```{r}
+model = lm(chol ~ thalch + ca + trestbps + sex , data = dt)
+# model = lm(chol ~ thalch + sex + trestbps, data = dt)
+summary(model)
+dt_zero$chol = predict(model, dt_zero) #Sinh dữ liệu của chol
+dt_final = rbind(dt_test, dt_zero) # Hợp nhất dt_test và dt_zero
+```
+
+-   Mô hình Ordinal Logistic
+
+    Xây dựng mô hình
+
+```{r}
+dt = dt_final
+library(MASS)
+dt$num = as.factor(dt$num)
+set.seed(123)
+sample = sample(c(T,F), nrow(dt), replace = T, c(0.8,0.2))
+train = dt[sample,]
+test = dt[!sample,]
+m = polr(num~., data = train, Hess = T)
+summary(m)
+
+```
+
+Tính toán các chỉ số đánh giá
+
+```{r}
+predicted = predict(m, test)
+# Ma trận nhầm lẫn
+conf_matrix <- table(Predicted = predicted, Actual = test$num)
+# Hàm tính Precision, Recall, F1-Score
+calculate_metrics <- function(conf_matrix) {
+  classes <- colnames(conf_matrix) # Các lớp
+  metrics <- data.frame(Class = classes, Precision = NA, Recall = NA, F1 = NA)
+  
+  for (class in classes) {
+    TP <- conf_matrix[class, class] # True Positive
+    FP <- sum(conf_matrix[class, ]) - TP # False Positive
+    FN <- sum(conf_matrix[, class]) - TP # False Negative
+    
+    precision <- TP / (TP + FP)
+    recall <- TP / (TP + FN)
+    f1 <- 2 * (precision * recall) / (precision + recall)
+    
+    metrics[metrics$Class == class, "Precision"] <- precision
+    metrics[metrics$Class == class, "Recall"] <- recall
+    metrics[metrics$Class == class, "F1"] <- f1
+  }
+  
+  return(metrics)
+}
+
+# Tính toán các chỉ số
+metrics <- calculate_metrics(conf_matrix)
+# Tính độ chính xác cho từng nhãn
+class_accuracy <- diag(conf_matrix) / rowSums(conf_matrix)
+
+# Chuyển dữ liệu thành dạng dài (long format)
+metrics_long <- reshape2::melt(metrics, id.vars = "Class", variable.name = "Metric", value.name = "Value")
+
+# Thêm độ chính xác vào bảng dữ liệu
+accuracy_df <- data.frame(Class = names(class_accuracy), Metric = "Accuracy", Value = class_accuracy)
+metrics_long <- rbind(metrics_long, accuracy_df)
+
+# Vẽ biểu đồ với độ chính xác
+ggplot(metrics_long, aes(x = Class, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  scale_fill_manual(values = c("Precision" = "lightblue", "Recall" = "lightgreen", "F1" = "lightpink", "Accuracy" = "lightyellow")) +
+  labs(title = "Precision, Recall, F1-Score và Accuracy từng giai đoạn của mô hình Ordinal Logistic", 
+       x = "Giai đoạn", y = "Giá trị", fill = "Chỉ số") +
+  scale_y_continuous(limits = c(0, 1)) +  # Đặt giới hạn trục y từ 0 đến 1
+  theme_minimal() +
+  theme(text = element_text(size = 7))
+```
+
+-   Mô hình Gaussian Naive Bayes
+
+```{r}
+library(e1071)
+dt = dt_final
+
+dt$sex <- as.factor(dt$sex)
+dt$cp <- as.factor(dt$cp)
+dt$fbs <- as.factor(dt$fbs)
+dt$restecg <- as.factor(dt$restecg)
+dt$exang <- as.factor(dt$exang)
+dt$slope <- as.factor(dt$slope)
+dt$thal <- as.factor(dt$thal)
+dt$num <- as.factor(dt$num)
+
+set.seed(123)
+sample = sample(c(T,F), nrow(dt), replace = T, c(0.8,0.2))
+train = dt[sample,]
+test = dt[!sample,]
+
+model <- naiveBayes(num ~ ., data = train)
+```
+
+Tính toán các chỉ số đánh giá
+
+```{r}
+predicted = predict(model, test)
+
+# Ma trận nhầm lẫn
+conf_matrix <- table(Predicted = predicted, Actual = test$num)
+# Hàm tính Precision, Recall, F1-Score
+calculate_metrics <- function(conf_matrix) {
+  classes <- colnames(conf_matrix) # Các lớp
+  metrics <- data.frame(Class = classes, Precision = NA, Recall = NA, F1 = NA)
+  
+  for (class in classes) {
+    TP <- conf_matrix[class, class] # True Positive
+    FP <- sum(conf_matrix[class, ]) - TP # False Positive
+    FN <- sum(conf_matrix[, class]) - TP # False Negative
+    
+    precision <- TP / (TP + FP)
+    recall <- TP / (TP + FN)
+    f1 <- 2 * (precision * recall) / (precision + recall)
+    
+    metrics[metrics$Class == class, "Precision"] <- precision
+    metrics[metrics$Class == class, "Recall"] <- recall
+    metrics[metrics$Class == class, "F1"] <- f1
+  }
+  
+  return(metrics)
+}
+
+# Tính toán các chỉ số
+metrics <- calculate_metrics(conf_matrix)
+# Tính độ chính xác cho từng nhãn
+class_accuracy <- diag(conf_matrix) / rowSums(conf_matrix)
+
+# Chuyển dữ liệu thành dạng dài (long format)
+metrics_long <- reshape2::melt(metrics, id.vars = "Class", variable.name = "Metric", value.name = "Value")
+
+# Thêm độ chính xác vào bảng dữ liệu
+accuracy_df <- data.frame(Class = names(class_accuracy), Metric = "Accuracy", Value = class_accuracy)
+metrics_long <- rbind(metrics_long, accuracy_df)
+
+# Vẽ biểu đồ với độ chính xác
+ggplot(metrics_long, aes(x = Class, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  scale_fill_manual(values = c("Precision" = "lightblue", "Recall" = "lightgreen", "F1" = "lightpink", "Accuracy" = "lightyellow")) +
+  labs(title = "Precision, Recall, F1-Score và Accuracy từng giai đoạn của mô hình Gaussian Naive Bayes", 
+       x = "Giai đoạn", y = "Giá trị", fill = "Chỉ số") +
+  scale_y_continuous(limits = c(0, 1)) +  # Đặt giới hạn trục y từ 0 đến 1
+  theme_minimal() +
+  theme(text = element_text(size = 7))
+```
